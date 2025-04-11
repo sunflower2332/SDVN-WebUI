@@ -1,7 +1,11 @@
+!pip install -q flask nest_asyncio unidecode
+
 import os
 import uuid
 import subprocess
 import time
+import nest_asyncio
+import threading
 import re
 from datetime import datetime, timedelta
 from flask import Flask, request, render_template_string, redirect, url_for, send_from_directory
@@ -12,6 +16,20 @@ import shutil
 
 # Set locale to support Vietnamese
 locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
+
+# Default upload folder in Google Drive
+DEFAULT_UPLOAD_FOLDER = '/content/drive/MyDrive/SD-Data/Export/ComfyUI/2025-04-10/'
+
+# Create the default folder if it doesn't exist
+os.makedirs(DEFAULT_UPLOAD_FOLDER, exist_ok=True)
+
+# Create Flask app
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = DEFAULT_UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 
 # HTML template for the upload page with Vietnamese support
 HTML_TEMPLATE = '''
@@ -217,172 +235,269 @@ HTML_TEMPLATE = '''
 </html>
 '''
 
-def create_flask_app(upload_folder):
-    app = Flask(__name__)
-    app.config['UPLOAD_FOLDER'] = upload_folder
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
+# Helper function for Vietnamese folder names
+def sanitize_vietnamese_filename(filename):
+    """Sanitize filename while preserving Vietnamese characters and slashes"""
+    # Only replace illegal filename characters (except slashes)
+    illegal_chars = ['\\', ':', '*', '?', '"', '<', '>', '|']
+    for char in illegal_chars:
+        filename = filename.replace(char, '_')
+    return filename.strip()
 
-    # Helper function for Vietnamese folder names
-    def sanitize_vietnamese_filename(filename):
-        """Sanitize filename while preserving Vietnamese characters and slashes"""
-        illegal_chars = ['\\', ':', '*', '?', '"', '<', '>', '|']
-        for char in illegal_chars:
-            filename = filename.replace(char, '_')
-        return filename.strip()
+# Helper function to get human-readable file size
+def get_file_size(size_in_bytes):
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_in_bytes < 1024.0:
+            return f"{size_in_bytes:.1f} {unit}"
+        size_in_bytes /= 1024.0
+    return f"{size_in_bytes:.1f} TB"
 
-    # Helper function to get human-readable file size
-    def get_file_size(size_in_bytes):
-        for unit in ['B', 'KB', 'MB', 'GB']:
-            if size_in_bytes < 1024.0:
-                return f"{size_in_bytes:.1f} {unit}"
-            size_in_bytes /= 1024.0
-        return f"{size_in_bytes:.1f} TB"
+# Helper function to get formatted date
+def get_formatted_date(timestamp):
+    date = datetime.fromtimestamp(timestamp)
+    vietnam_time = date + timedelta(hours=7)
+    return vietnam_time.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Helper function to get formatted date
-    def get_formatted_date(timestamp):
-        date = datetime.fromtimestamp(timestamp)
-        vietnam_time = date + timedelta(hours=7)
-        return vietnam_time.strftime("%Y-%m-%d %H:%M:%S")
+# Routes
+@app.route('/')
+def index():
+    page = request.args.get('page', 1, type=int)
+    per_page = 10  # Number of files per page
 
-    @app.route('/')
-    def index():
-        page = request.args.get('page', 1, type=int)
-        per_page = 10  # Number of files per page
-        folder_name = request.args.get('folder', '')
-        
-        if folder_name:
-            current_folder = os.path.join(app.config['UPLOAD_FOLDER'], sanitize_vietnamese_filename(folder_name))
-        else:
-            current_folder = app.config['UPLOAD_FOLDER']
-        
-        os.makedirs(current_folder, exist_ok=True)
-        
-        files = []
-        for filename in os.listdir(current_folder):
-            if filename.startswith('.'):
-                continue
-            file_path = os.path.join(current_folder, filename)
+    # Get the current folder path and remove the default path from the display
+    folder_name_display = app.config['UPLOAD_FOLDER'].replace('/content/drive/MyDrive/SD-Data/Export/ComfyUI/2025-04-10/', '')
+
+    # Get list of files in the current upload folder
+    files = []
+    if os.path.exists(app.config['UPLOAD_FOLDER']):
+        all_files = []
+        for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             if os.path.isfile(file_path):
-                stat = os.stat(file_path)
-                files.append({
-                    'name': filename,
-                    'size': get_file_size(stat.st_size),
-                    'date': get_formatted_date(stat.st_mtime)
-                })
-        
-        # Sort files by date (newest first)
-        files.sort(key=lambda x: datetime.strptime(x['date'], "%Y-%m-%d %H:%M:%S"), reverse=True)
-        
-        # Pagination
-        total_files = len(files)
-        pages = (total_files + per_page - 1) // per_page
+                # Check if it's an image file
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
+                    size = get_file_size(os.path.getsize(file_path))
+                    mod_time = os.path.getmtime(file_path)
+                    formatted_date = get_formatted_date(mod_time)
+                    all_files.append({
+                        'name': filename,
+                        'size': size,
+                        'date': formatted_date,
+                        'timestamp': mod_time
+                    })
+
+        # Sort files by modification time (newest first)
+        all_files.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        # Calculate pagination
+        total_files = len(all_files)
+        pages = (total_files + per_page - 1) // per_page  # Ceiling division
+
+        # Adjust page if out of range
+        if page < 1:
+            page = 1
+        elif page > pages and pages > 0:
+            page = pages
+
+        # Get files for current page
         start_idx = (page - 1) * per_page
         end_idx = start_idx + per_page
-        files = files[start_idx:end_idx]
-        
-        return render_template_string(HTML_TEMPLATE,
-                                   folder_name=folder_name,
-                                   files=files,
-                                   current_page=page,
-                                   pages=pages)
+        files = all_files[start_idx:end_idx]
 
-    @app.route('/set_folder', methods=['POST'])
-    def set_folder():
-        folder_name = request.form['folder_name']
-        return redirect(url_for('index', folder=folder_name))
+    return render_template_string(
+        HTML_TEMPLATE,
+        folder_name=folder_name_display,  # Only show relative folder path in the UI
+        files=files,
+        success_message=request.args.get('message', ''),
+        error_message=request.args.get('error', ''),
+        current_page=page,
+        pages=max(1, (len(files) + per_page - 1) // per_page) if files else 0
+    )
 
-    @app.route('/upload', methods=['POST'])
-    def upload_file():
-        if 'file' not in request.files:
-            return redirect(request.url)
-        
-        files = request.files.getlist('file')
-        folder_name = request.form.get('folder', '')
-        
-        if folder_name:
-            upload_dir = os.path.join(app.config['UPLOAD_FOLDER'], sanitize_vietnamese_filename(folder_name))
-        else:
-            upload_dir = app.config['UPLOAD_FOLDER']
-        
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        for file in files:
-            if file.filename:
+@app.route('/set_folder', methods=['POST'])
+def set_folder():
+    folder_name = request.form.get('folder_name')
+    if folder_name:
+        # Handle Vietnamese characters properly
+        folder_name = sanitize_vietnamese_filename(folder_name)
+
+        # Use absolute path if provided, otherwise assume relative to default
+        if not folder_name.startswith('/'):
+            folder_name = os.path.join(DEFAULT_UPLOAD_FOLDER, folder_name)
+
+        app.config['UPLOAD_FOLDER'] = folder_name
+
+        try:
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            message = f"Folder changed to: {app.config['UPLOAD_FOLDER']}"
+            return redirect(url_for('index', message=message))
+        except Exception as e:
+            error = f"Error creating folder: {str(e)}"
+            return redirect(url_for('index', error=error))
+    else:
+        return redirect(url_for('index', error="Please provide a valid folder name"))
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return redirect(url_for('index', error="No file part"))
+
+    files = request.files.getlist('file')
+
+    if not files or files[0].filename == '':
+        return redirect(url_for('index', error="No files selected"))
+
+    upload_count = 0
+    errors = []
+
+    for file in files:
+        if file and file.filename:
+            try:
+                # Create timestamped filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = secure_filename(file.filename)
-                file.save(os.path.join(upload_dir, filename))
-        
-        return redirect(url_for('index', folder=folder_name))
+                base, ext = os.path.splitext(filename)
+                new_filename = f"{timestamp}_{base}{ext}"
 
-    @app.route('/download/<filename>')
-    def download_file(filename):
-        folder_name = request.args.get('folder', '')
-        if folder_name:
-            directory = os.path.join(app.config['UPLOAD_FOLDER'], sanitize_vietnamese_filename(folder_name))
-        else:
-            directory = app.config['UPLOAD_FOLDER']
-        return send_from_directory(directory, filename, as_attachment=True)
+                # Save the file
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], new_filename)
+                file.save(file_path)
+                upload_count += 1
+            except Exception as e:
+                errors.append(f"Error uploading {file.filename}: {str(e)}")
 
-    @app.route('/delete/<filename>')
-    def delete_file(filename):
-        folder_name = request.args.get('folder', '')
-        page = request.args.get('page', 1)
-        
-        if folder_name:
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], sanitize_vietnamese_filename(folder_name), filename)
-        else:
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        
+    if errors:
+        return redirect(url_for('index', error="\n".join(errors)))
+    else:
+        message = f"Successfully uploaded {upload_count} file(s)"
+        return redirect(url_for('index', message=message))
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
+
+@app.route('/thumbnail/<filename>')
+def thumbnail(filename):
+    # Simply return the file for now (not an actual thumbnail)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/delete/<filename>')
+def delete_file(filename):
+    page = request.args.get('page', 1, type=int)
+    try:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         if os.path.exists(file_path):
             os.remove(file_path)
-        
-        return redirect(url_for('index', folder=folder_name, page=page))
-
-    @app.route('/thumbnail/<filename>')
-    def thumbnail(filename):
-        folder_name = request.args.get('folder', '')
-        if folder_name:
-            directory = os.path.join(app.config['UPLOAD_FOLDER'], sanitize_vietnamese_filename(folder_name))
+            message = f"File {filename} deleted successfully"
         else:
-            directory = app.config['UPLOAD_FOLDER']
-        
-        from PIL import Image
-        import io
-        
-        try:
-            img = Image.open(os.path.join(directory, filename))
-            img.thumbnail((300, 300))
-            img_io = io.BytesIO()
-            img.save(img_io, 'JPEG', quality=70)
-            img_io.seek(0)
-            return send_from_directory(directory, filename, mimetype='image/jpeg')
-        except Exception as e:
-            return str(e), 500
+            message = f"File {filename} not found"
+        return redirect(url_for('index', message=message, page=page))
+    except Exception as e:
+        error = f"Error deleting file: {str(e)}"
+        return redirect(url_for('index', error=error, page=page))
 
-    return app
-
-def run_flask_app(port=5000, upload_folder=None):
-    if upload_folder is None:
-        upload_folder = os.path.join(os.path.expanduser("~"), "ComfyUIinput")
-    
-    os.makedirs(upload_folder, exist_ok=True)
-    app = create_flask_app(upload_folder)
-    
-    # Get the ComfyUI tunnel URL
-    comfy_url = None
-    try:
-        with open(os.path.join(os.path.expanduser("~"), "comfy_url.txt"), "r") as f:
-            comfy_url = f.read().strip()
-    except:
-        pass
-    
-    if comfy_url:
-        # Extract the domain from ComfyUI URL
-        domain = comfy_url.split("://")[1].split("/")[0]
-        print(f"\nFlask app is running at: {comfy_url}/upload")
-    else:
-        print(f"\nFlask app is running at: http://localhost:{port}")
-    
+# Function to run Flask app in a separate thread
+def run_flask_app(port=5000):
     app.run(host='0.0.0.0', port=port)
 
-if __name__ == '__main__':
-    run_flask_app() 
+# Serveo tunnel function (replacing Cloudflare tunnel)
+def serveo_thread(port):
+    import socket
+    while True:
+        time.sleep(0.5)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('127.0.0.1', port))
+        if result == 0:
+            break
+        sock.close()
+    
+    try:
+        print("Starting Serveo tunnel...")
+        # Use port 8888 for ComfyUI
+        process = subprocess.Popen(
+            ["ssh", "-o", "StrictHostKeyChecking=no", "-R", "80:localhost:8888", "serveo.net"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        # Read output to get the web link
+        for line in iter(process.stdout.readline, ''):
+            match = re.search(r'(https?://[^\s]+)', line)
+            if match:
+                public_url = match.group(1)
+                print(f"\033[92m{'🔗 Link online để sử dụng:'}\033[0m {public_url}")
+                
+                # Display additional information
+                print("\n============================================================")
+                print(f"ComfyUI is running at: {public_url}")
+                print("This URL can be accessed from any device with internet access")
+                print("============================================================\n")
+                
+                break
+                
+        return public_url, process
+    except Exception as e:
+        print(f"❌ Lỗi: {e}")
+        return None, None
+
+# Setup service with Serveo
+def setup_serveo_service(port=5000, api=None):
+    # Start the tunnel in a separate thread
+    thread = threading.Thread(target=serveo_thread, daemon=True, args=(port,))
+    thread.start()
+    return thread
+
+# Main function to set everything up
+def setup_photo_uploader(port=5000):
+    """Set up the photo uploader with a Serveo public URL"""
+    # Ensure Google Drive is mounted
+    if not os.path.exists('/content/drive'):
+        print("Mounting Google Drive...")
+        from google.colab import drive
+        drive.mount('/content/drive')
+
+    # Create default folder if it doesn't exist
+    os.makedirs(DEFAULT_UPLOAD_FOLDER, exist_ok=True)
+    print(f"Default upload folder: {DEFAULT_UPLOAD_FOLDER}")
+
+    # Start Flask in a thread
+    flask_thread = Thread(target=run_flask_app, args=(port,))
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    # Wait for Flask to start
+    time.sleep(2)
+    
+    # Set up the Serveo tunnel
+    serveo_thread_obj = setup_serveo_service(port=8888)  # Use ComfyUI port
+    
+    print("ComfyUI is starting...")
+    print("Wait for the Serveo link to appear above")
+    
+    # Keep the main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Shutting down...")
+
+# Run the setup
+if __name__ == "__main__":
+    # Import necessary modules for ComfyUI
+    import sys
+    import subprocess
+    
+    # Start ComfyUI in the background
+    comfy_process = subprocess.Popen(
+        ["python", "main.py", "--port", "8888"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+    
+    # Wait for ComfyUI to start
+    time.sleep(5)
+    
+    # Start the Flask app with Serveo tunnel
+    setup_photo_uploader(port=5000)
