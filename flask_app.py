@@ -413,9 +413,8 @@ def serveo_thread(port):
     
     try:
         print("Starting Serveo tunnel...")
-        # Use port 8888 for ComfyUI
         process = subprocess.Popen(
-            ["ssh", "-o", "StrictHostKeyChecking=no", "-R", "80:localhost:8888", "serveo.net"],
+            ["ssh", "-o", "StrictHostKeyChecking=no", "-R", "80:localhost:{}".format(port), "serveo.net"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -427,13 +426,10 @@ def serveo_thread(port):
             if match:
                 public_url = match.group(1)
                 print(f"\033[92m{'🔗 Link online để sử dụng:'}\033[0m {public_url}")
-                
-                # Display additional information
                 print("\n============================================================")
-                print(f"ComfyUI is running at: {public_url}")
+                print(f"Flask app is running at: {public_url}")
                 print("This URL can be accessed from any device with internet access")
                 print("============================================================\n")
-                
                 break
                 
         return public_url, process
@@ -470,9 +466,9 @@ def setup_photo_uploader(port=5000):
     time.sleep(2)
     
     # Set up the Serveo tunnel
-    serveo_thread_obj = setup_serveo_service(port=8888)  # Use ComfyUI port
+    serveo_thread_obj = setup_serveo_service(port=port)  # Use Flask port
     
-    print("ComfyUI is starting...")
+    print("Flask app is starting...")
     print("Wait for the Serveo link to appear above")
     
     # Keep the main thread alive
