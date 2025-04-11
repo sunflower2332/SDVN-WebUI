@@ -412,7 +412,7 @@ def serveo_thread(port):
         sock.close()
     
     try:
-        print("Starting Serveo tunnel...")
+        print("Starting Serveo tunnel for Flask app...")
         process = subprocess.Popen(
             ["ssh", "-o", "StrictHostKeyChecking=no", "-R", "80:localhost:{}".format(port), "serveo.net"],
             stdout=subprocess.PIPE,
@@ -437,63 +437,15 @@ def serveo_thread(port):
         print(f"❌ Lỗi: {e}")
         return None, None
 
-# Setup service with Serveo
-def setup_serveo_service(port=5000, api=None):
-    # Start the tunnel in a separate thread
-    thread = threading.Thread(target=serveo_thread, daemon=True, args=(port,))
-    thread.start()
-    return thread
-
-# Main function to set everything up
-def setup_photo_uploader(port=5000):
-    """Set up the photo uploader with a Serveo public URL"""
-    # Ensure Google Drive is mounted
-    if not os.path.exists('/content/drive'):
-        print("Mounting Google Drive...")
-        from google.colab import drive
-        drive.mount('/content/drive')
-
-    # Create default folder if it doesn't exist
-    os.makedirs(DEFAULT_UPLOAD_FOLDER, exist_ok=True)
-    print(f"Default upload folder: {DEFAULT_UPLOAD_FOLDER}")
-
+# Start Flask app and Serveo tunnel
+if __name__ == "__main__":
     # Start Flask in a thread
-    flask_thread = Thread(target=run_flask_app, args=(port,))
+    flask_thread = Thread(target=run_flask_app, args=(5000,))
     flask_thread.daemon = True
     flask_thread.start()
 
     # Wait for Flask to start
     time.sleep(2)
     
-    # Set up the Serveo tunnel
-    serveo_thread_obj = setup_serveo_service(port=port)  # Use Flask port
-    
-    print("Flask app is starting...")
-    print("Wait for the Serveo link to appear above")
-    
-    # Keep the main thread alive
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Shutting down...")
-
-# Run the setup
-if __name__ == "__main__":
-    # Import necessary modules for ComfyUI
-    import sys
-    import subprocess
-    
-    # Start ComfyUI in the background
-    comfy_process = subprocess.Popen(
-        ["python", "main.py", "--port", "8888"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
-    )
-    
-    # Wait for ComfyUI to start
-    time.sleep(5)
-    
-    # Start the Flask app with Serveo tunnel
-    setup_photo_uploader(port=5000)
+    # Start Serveo tunnel
+    serveo_thread(5000)
