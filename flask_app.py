@@ -400,7 +400,7 @@ def delete_file(filename):
 def run_flask_app(port=5000):
     app.run(host='0.0.0.0', port=port)
 
-# Serveo tunnel function (replacing Cloudflare tunnel)
+# Serveo tunnel function
 def serveo_thread(port):
     import socket
     while True:
@@ -412,7 +412,7 @@ def serveo_thread(port):
         sock.close()
     
     try:
-        print("Starting Serveo tunnel for Flask app...")
+        print("\nStarting Serveo tunnel for Flask app...")
         process = subprocess.Popen(
             ["ssh", "-o", "StrictHostKeyChecking=no", "-R", "80:localhost:{}".format(port), "serveo.net"],
             stdout=subprocess.PIPE,
@@ -425,7 +425,7 @@ def serveo_thread(port):
             match = re.search(r'(https?://[^\s]+)', line)
             if match:
                 public_url = match.group(1)
-                print(f"\033[92m{'🔗 Link online để sử dụng:'}\033[0m {public_url}")
+                print(f"\n\033[92m{'🔗 Link online để sử dụng:'}\033[0m {public_url}")
                 print("\n============================================================")
                 print(f"Flask app is running at: {public_url}")
                 print("This URL can be accessed from any device with internet access")
@@ -439,13 +439,23 @@ def serveo_thread(port):
 
 # Start Flask app and Serveo tunnel
 if __name__ == "__main__":
+    print("Starting Flask app...")
     # Start Flask in a thread
     flask_thread = Thread(target=run_flask_app, args=(5000,))
     flask_thread.daemon = True
     flask_thread.start()
 
     # Wait for Flask to start
-    time.sleep(2)
+    print("Waiting for Flask app to start...")
+    time.sleep(5)
     
     # Start Serveo tunnel
+    print("Starting Serveo tunnel...")
     serveo_thread(5000)
+    
+    # Keep the main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Shutting down...")
