@@ -24,7 +24,7 @@ new_source = [
     '    if RunMode == "Run Both (ComfyUI First)":\n',
     '        print("\\n\\033[1;33mComfyUI is now running. To use Upload_image.ipynb, either:\\033[0m")\n',
     '        print("\\033[1;33m1. Stop this cell and select \'Upload Models\' from the dropdown, or\\033[0m")\n',
-    '        print("\\033[1;33m2. Open Upload_image.ipynb in a new tab: https://colab.research.google.com/github/StableDiffusionVN/SDVN-WebUI/blob/main/Upload_image.ipynb\\033[0m")\n'
+    '        print("\\033[1;33m2. Open Upload_image.ipynb in a new tab: https://colab.research.google.com/github/sunflower2332/SDVN-WebUI/blob/main/Upload_image.ipynb\\033[0m")\n'
 ]
 notebook['cells'][1]['source'] = new_source
 
