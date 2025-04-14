@@ -82,9 +82,28 @@ new_source = [
     'RunMode = "Run ComfyUI" #@param ["Run ComfyUI", "Upload Models", "Run Both (ComfyUI First)"]\n',
     'DriveLib = True\n',
     'CommandLine = "" #@param {type:"string"}\n',
+<<<<<<< HEAD
     '\n',
     'if RunMode == "Upload Models":\n',
     '    print("\\n\\033[1;32mRunning Upload_image.ipynb for model management...\\033[0m")\n',
+=======
+    'install_custom()\n',
+    'import time\n',
+    'import threading\n',
+    'from datetime import datetime, timedelta\n',
+    '\n',
+    '# Define a function to run the upload script in a separate thread\n',
+    'def run_upload_script():\n',
+    '    import time\n',
+    '    # Give ComfyUI a moment to start up\n',
+    '    time.sleep(10)\n',
+    '    print("\\n\\033[1;32mStarting Upload_image.ipynb for model management...\\033[0m")\n',
+    '    # Ensure Upload_image.ipynb uses today\'s date\n',
+    '    now = datetime.utcnow() + timedelta(hours=7) # GMT+7\n',
+    '    today = now.strftime("%Y-%m-%d")\n',
+    '    print(f"\\033[1;32mImages will be saved to folder: {today} (GMT+7 timezone)\\033[0m")\n',
+    '    # Run the upload script\n',
+>>>>>>> parent of 45c93ac (lan3 14/4)
     '    %run /content/SDVN-WebUI/Upload_image.ipynb\n',
     'elif RunMode == "Run ComfyUI" or RunMode == "Run Both (ComfyUI First)":\n',
     '    install_custom()\n',
@@ -102,4 +121,4 @@ notebook['cells'][1]['source'] = new_source
 with open('SDVN_ComfyUI_Flux_v3.ipynb', 'w', encoding='utf-8') as f:
     json.dump(notebook, f, ensure_ascii=False, indent=1)
 
-print('Notebook updated successfully!')
+print('SDVN_ComfyUI_Flux_v3.ipynb updated successfully!') 
