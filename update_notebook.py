@@ -85,7 +85,6 @@ new_source = [
     'install_custom()\n',
     'import time\n',
     'import threading\n',
-    'from datetime import datetime, timedelta\n',
     '\n',
     '# Define a function to run the upload script in a separate thread\n',
     'def run_upload_script():\n',
@@ -93,10 +92,6 @@ new_source = [
     '    # Give ComfyUI a moment to start up\n',
     '    time.sleep(10)\n',
     '    print("\\n\\033[1;32mStarting Upload_image.ipynb for model management...\\033[0m")\n',
-    '    # Ensure Upload_image.ipynb uses today\'s date\n',
-    '    now = datetime.utcnow() + timedelta(hours=7) # GMT+7\n',
-    '    today = now.strftime("%Y-%m-%d")\n',
-    '    print(f"\\033[1;32mImages will be saved to folder: {today} (GMT+7 timezone)\\033[0m")\n',
     '    # Run the upload script\n',
     '    %run /content/SDVN-WebUI/Upload_image.ipynb\n',
     '\n',
@@ -116,4 +111,4 @@ notebook['cells'][1]['source'] = new_source
 with open('SDVN_ComfyUI_Flux_v3.ipynb', 'w', encoding='utf-8') as f:
     json.dump(notebook, f, ensure_ascii=False, indent=1)
 
-print('SDVN_ComfyUI_Flux_v3.ipynb updated successfully!') 
+print('Notebook updated successfully!')
