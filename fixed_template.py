@@ -113,7 +113,8 @@ HTML_TEMPLATE = '''
         .thumbnail-container {
             position: relative;
             width: 100%;
-            height: 200px;
+            height: 250px;
+            cursor: pointer;
         }
         .file-thumbnail {
             width: 100%;
@@ -137,6 +138,46 @@ HTML_TEMPLATE = '''
         }
         .current-page {
             background-color: #1a73e8;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        /* Modal/Lightbox styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            padding-top: 50px;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90%;
+        }
+        .close {
+            position: absolute;
+            top: 15px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            transition: 0.3s;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: #bbb;
+            text-decoration: none;
         }
         @media (max-width: 1000px) {
             .files-grid {
@@ -193,14 +234,19 @@ HTML_TEMPLATE = '''
     <div class="container">
         <h2>
             Uploaded Files
-            <button onclick="window.location.href='/?page={{ current_page }}'" class="refresh-btn">Refresh</button>
         </h2>
+        <div class="header-actions">
+            <button onclick="window.location.href='/?page={{ current_page }}'" class="refresh-btn">Refresh</button>
+            {% if files %}
+            <a href="/delete_all?page={{ current_page }}" class="btn btn-delete" onclick="return confirm('Bạn có chắc muốn xóa TẤT CẢ ảnh trong thư mục này?')">Delete All Photos</a>
+            {% endif %}
+        </div>
         <div class="file-list">
             {% if files %}
                 <div class="files-grid">
                     {% for file in files %}
                     <div class="file-item">
-                        <div class="thumbnail-container">
+                        <div class="thumbnail-container" onclick="openModal('{{ file.name }}')">
                             <img src="/thumbnail/{{ file.name }}" class="file-thumbnail" alt="Thumbnail">
                         </div>
                         <div class="file-info">{{ file.name }} ({{ file.size }})<br>{{ file.date }}</div>
@@ -233,6 +279,40 @@ HTML_TEMPLATE = '''
         </div>
     <p>Mn nên xóa bằng Delete trên trang này, không nên xóa trên Drive nên vì đôi lúc Drive không cập nhật sẽ bị lỗi, VD: Folder De_abc có 50 ảnh và bạn chỉ lấy 10 ảnh để Upscale bằng các xóa trên Drive nhưng vì Drive ko update kịp nên sẽ Upscale hết 50 ảnh * 2' = 100' rất tốn thời gian <p>
     </div>
+
+    <!-- Modal for image preview -->
+    <div id="imageModal" class="modal">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <img class="modal-content" id="modalImg">
+    </div>
+
+    <script>
+        // Modal/Lightbox for image preview
+        function openModal(imageName) {
+            const modal = document.getElementById('imageModal');
+            const modalImg = document.getElementById('modalImg');
+            modal.style.display = "block";
+            modalImg.src = "/thumbnail/" + imageName;
+            
+            // Close modal when clicking outside the image
+            modal.onclick = function(event) {
+                if (event.target === modal || event.target.className === 'close') {
+                    closeModal();
+                }
+            };
+        }
+        
+        function closeModal() {
+            document.getElementById('imageModal').style.display = "none";
+        }
+        
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === "Escape") {
+                closeModal();
+            }
+        });
+    </script>
 </body>
 </html>
 ''' 
