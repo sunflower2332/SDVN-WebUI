@@ -4,6 +4,53 @@ This is a fixed HTML template for the Upload_image.ipynb file.
 To use it:
 1. Copy the HTML_TEMPLATE variable below
 2. Paste it into your Upload_image.ipynb file, replacing the existing HTML_TEMPLATE variable
+3. Add the following routes to your file:
+
+@app.errorhandler(413)
+@app.errorhandler(RequestEntityTooLarge)
+def request_entity_too_large(error):
+    return redirect(url_for('index', error="File too large! Maximum size is 32MB."))
+
+@app.errorhandler(404)
+def not_found(error):
+    return redirect(url_for('index', error="Page not found."))
+
+@app.route('/delete_all')
+def delete_all_files():
+    page = request.args.get('page', 1, type=int)
+    try:
+        deleted_count = 0
+        if os.path.exists(app.config['UPLOAD_FOLDER']):
+            for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                if os.path.isfile(file_path) and filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
+                    os.remove(file_path)
+                    deleted_count += 1
+        
+        message = f"Deleted {deleted_count} file(s) successfully"
+        return redirect(url_for('index', message=message, page=page))
+    except Exception as e:
+        error = f"Error deleting files: {str(e)}"
+        return redirect(url_for('index', error=error, page=page))
+
+@app.route('/delete_selected', methods=['POST'])
+def delete_selected_files():
+    page = request.args.get('page', 1, type=int)
+    try:
+        selected_files = request.form.getlist('selected_files')
+        deleted_count = 0
+        
+        for filename in selected_files:
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                os.remove(file_path)
+                deleted_count += 1
+        
+        message = f"Deleted {deleted_count} file(s) successfully"
+        return redirect(url_for('index', message=message, page=page))
+    except Exception as e:
+        error = f"Error deleting files: {str(e)}"
+        return redirect(url_for('index', error=error, page=page))
 """
 
 HTML_TEMPLATE = '''
@@ -50,6 +97,15 @@ HTML_TEMPLATE = '''
             border-radius: 8px;
             overflow: hidden;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .file-checkbox {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            transform: scale(1.5);
+            opacity: 0.8;
         }
         .file-actions {
             display: flex;
@@ -144,6 +200,14 @@ HTML_TEMPLATE = '''
             align-items: center;
             gap: 10px;
             margin-top: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .batch-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
         }
         /* Modal/Lightbox styles */
         .modal {
@@ -228,7 +292,7 @@ HTML_TEMPLATE = '''
             <input type="file" name="file" multiple accept="image/*" required>
             <button type="submit">Upload</button>
         </form>
-        <p>Mọi người upload thì giữ Ctrl + Chọn ảnh để có thể chọn được nhiều ảnh cùng 1 lúc, chọn Upload<p>
+        <p>Mọi người upload thì giữ Ctrl + Chọn ảnh để có thể chọn được nhiều ảnh cùng 1 lúc, chọn Upload. Kích thước tối đa là 32MB.<p>
     </div>
 
     <div class="container">
@@ -238,14 +302,23 @@ HTML_TEMPLATE = '''
         <div class="header-actions">
             <button onclick="window.location.href='/?page={{ current_page }}'" class="refresh-btn">Refresh</button>
             {% if files %}
-            <a href="/delete_all?page={{ current_page }}" class="btn btn-delete" onclick="return confirm('Bạn có chắc muốn xóa TẤT CẢ ảnh trong thư mục này?')">Delete All Photos</a>
+            <a href="/delete_all" class="btn btn-delete" onclick="return confirm('Bạn có chắc muốn xóa TẤT CẢ ảnh trong thư mục này?')">Delete All Photos</a>
             {% endif %}
         </div>
-        <div class="file-list">
-            {% if files %}
+        
+        {% if files %}
+        <form id="batch-form" action="/delete_selected" method="post">
+            <div class="batch-actions">
+                <button type="button" onclick="selectAll()" class="btn">Select All</button>
+                <button type="button" onclick="deselectAll()" class="btn">Deselect All</button>
+                <button type="submit" class="btn btn-delete" onclick="return confirmDelete()">Delete Selected</button>
+            </div>
+            
+            <div class="file-list">
                 <div class="files-grid">
                     {% for file in files %}
                     <div class="file-item">
+                        <input type="checkbox" name="selected_files" value="{{ file.name }}" class="file-checkbox">
                         <div class="thumbnail-container" onclick="openModal('{{ file.name }}')">
                             <img src="/thumbnail/{{ file.name }}" class="file-thumbnail" alt="Thumbnail">
                         </div>
@@ -261,23 +334,27 @@ HTML_TEMPLATE = '''
                 <div class="pagination">
                     {% if pages > 1 %}
                         {% if current_page > 1 %}
-                            <button onclick="window.location.href='/?page={{ current_page - 1 }}'">←</button>
+                            <button onclick="window.location.href='/?page={{ current_page - 1 }}'" type="button">←</button>
                         {% endif %}
 
                         {% for page in range(1, pages + 1) %}
-                            <button onclick="window.location.href='/?page={{ page }}'" {% if page == current_page %}class="current-page"{% endif %}>{{ page }}</button>
+                            <button onclick="window.location.href='/?page={{ page }}'" type="button" {% if page == current_page %}class="current-page"{% endif %}>{{ page }}</button>
                         {% endfor %}
 
                         {% if current_page < pages %}
-                            <button onclick="window.location.href='/?page={{ current_page + 1 }}'">→</button>
+                            <button onclick="window.location.href='/?page={{ current_page + 1 }}'" type="button">→</button>
                         {% endif %}
                     {% endif %}
                 </div>
-            {% else %}
+            </div>
+        </form>
+        {% else %}
+            <div class="file-list">
                 <p>No files in this folder.</p>
-            {% endif %}
-        </div>
-    <p>Mn nên xóa bằng Delete trên trang này, không nên xóa trên Drive nên vì đôi lúc Drive không cập nhật sẽ bị lỗi, VD: Folder De_abc có 50 ảnh và bạn chỉ lấy 10 ảnh để Upscale bằng các xóa trên Drive nhưng vì Drive ko update kịp nên sẽ Upscale hết 50 ảnh * 2' = 100' rất tốn thời gian <p>
+            </div>
+        {% endif %}
+        
+        <p>Mn nên xóa bằng Delete trên trang này, không nên xóa trên Drive nên vì đôi lúc Drive không cập nhật sẽ bị lỗi, VD: Folder De_abc có 50 ảnh và bạn chỉ lấy 10 ảnh để Upscale bằng các xóa trên Drive nhưng vì Drive ko update kịp nên sẽ Upscale hết 50 ảnh * 2' = 100' rất tốn thời gian </p>
     </div>
 
     <!-- Modal for image preview -->
@@ -289,6 +366,11 @@ HTML_TEMPLATE = '''
     <script>
         // Modal/Lightbox for image preview
         function openModal(imageName) {
+            // Don't open modal if clicking on the checkbox
+            if (event.target.type === 'checkbox') {
+                return;
+            }
+            
             const modal = document.getElementById('imageModal');
             const modalImg = document.getElementById('modalImg');
             modal.style.display = "block";
@@ -311,6 +393,40 @@ HTML_TEMPLATE = '''
             if (event.key === "Escape") {
                 closeModal();
             }
+        });
+        
+        // Batch selection functions
+        function selectAll() {
+            const checkboxes = document.querySelectorAll('input[name="selected_files"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        }
+        
+        function deselectAll() {
+            const checkboxes = document.querySelectorAll('input[name="selected_files"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        }
+        
+        function confirmDelete() {
+            const checkboxes = document.querySelectorAll('input[name="selected_files"]:checked');
+            if (checkboxes.length === 0) {
+                alert('No files selected!');
+                return false;
+            }
+            return confirm(`Are you sure you want to delete ${checkboxes.length} selected file(s)?`);
+        }
+        
+        // Make thumbnail container clickable, but not when clicking the checkbox
+        document.addEventListener('DOMContentLoaded', function() {
+            const checkboxes = document.querySelectorAll('.file-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                });
+            });
         });
     </script>
 </body>
