@@ -6,7 +6,7 @@ pip install --upgrade -q -r /content/ComfyUI/custom_nodes/comfyui-dynamicprompts
 python /content/ComfyUI/custom_nodes/comfyui-dynamicprompts/install.py
 git clone https://github.com/Fannovel16/comfyui_controlnet_aux
 pip install -r /content/ComfyUI/custom_nodes/comfyui_controlnet_aux/requirements.txt
-git clone https://github.com/StableDiffusionVN/SDVN_Comfy_node
+git clone https://github.com/sunflower2332/SDVN_Comfy_node
 
 git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus
 pip install insightface
