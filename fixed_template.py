@@ -1,0 +1,238 @@
+"""
+This is a fixed HTML template for the Upload_image.ipynb file.
+
+To use it:
+1. Copy the HTML_TEMPLATE variable below
+2. Paste it into your Upload_image.ipynb file, replacing the existing HTML_TEMPLATE variable
+"""
+
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Photo Uploader</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f7f9fc;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .file-list {
+            background-color: #f7f7f7;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .files-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .file-item {
+            display: flex;
+            flex-direction: column;
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .file-actions {
+            display: flex;
+            justify-content: space-between;
+            gap: 5px;
+            padding: 8px;
+            background-color: #f9f9f9;
+        }
+        .upload-form {
+            margin: 20px 0;
+        }
+        input[type="text"], input[type="file"] {
+            margin-bottom: 10px;
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button, .btn {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        button:hover, .btn:hover {
+            background-color: #3367d6;
+        }
+        .btn-delete {
+            background-color: #e53935;
+        }
+        .btn-delete:hover {
+            background-color: #c62828;
+        }
+        .success-message {
+            color: #28a745;
+            margin-bottom: 15px;
+        }
+        .error-message {
+            color: #dc3545;
+            margin-bottom: 15px;
+        }
+        .folder-name {
+            font-weight: bold;
+            margin-bottom: 15px;
+            word-break: break-all;
+        }
+        .download-link {
+            color: white;
+            text-decoration: none;
+        }
+        .file-info {
+            padding: 8px;
+            word-break: break-all;
+            font-size: 12px;
+        }
+        .thumbnail-container {
+            position: relative;
+            width: 100%;
+            height: 200px;
+        }
+        .file-thumbnail {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background-color: #f0f0f0;
+        }
+        .refresh-btn {
+            margin-left: 10px;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 15px;
+            gap: 5px;
+        }
+        .pagination button {
+            min-width: 30px;
+        }
+        .current-page {
+            background-color: #1a73e8;
+        }
+        @media (max-width: 1000px) {
+            .files-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        @media (max-width: 768px) {
+            .files-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (max-width: 480px) {
+            .files-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Upload ảnh cho Comfy</h1>
+
+        <div class="folder-name">
+            Current folder: {{ folder_name }}
+        </div>
+
+        {% if success_message %}
+        <div class="success-message">
+            {{ success_message }}
+        </div>
+        {% endif %}
+
+        {% if error_message %}
+        <div class="error-message">
+            {{ error_message }}
+        </div>
+        {% endif %}
+
+        <form action="/set_folder" method="post" class="upload-form">
+            <h2>Change Folder</h2>
+            <input type="text" name="folder_name" placeholder="Enter folder name (Vietnamese supported)" value="{{ folder_name }}" required>
+            <button type="submit">Set Folder</button>
+            <p>Mn chọn nhập tên Folder (trong trường hợp trên drive chưa có Folder sẽ tự tạo folder mới), sau có Click Set Folder<p>
+        </form>
+
+        <form action="/upload" method="post" enctype="multipart/form-data" class="upload-form">
+            <h2>Upload Photos</h2>
+            <input type="file" name="file" multiple accept="image/*" required>
+            <button type="submit">Upload</button>
+        </form>
+        <p>Mọi người upload thì giữ Ctrl + Chọn ảnh để có thể chọn được nhiều ảnh cùng 1 lúc, chọn Upload<p>
+    </div>
+
+    <div class="container">
+        <h2>
+            Uploaded Files
+            <button onclick="window.location.href='/?page={{ current_page }}'" class="refresh-btn">Refresh</button>
+        </h2>
+        <div class="file-list">
+            {% if files %}
+                <div class="files-grid">
+                    {% for file in files %}
+                    <div class="file-item">
+                        <div class="thumbnail-container">
+                            <img src="/thumbnail/{{ file.name }}" class="file-thumbnail" alt="Thumbnail">
+                        </div>
+                        <div class="file-info">{{ file.name }} ({{ file.size }})<br>{{ file.date }}</div>
+                        <div class="file-actions">
+                            <a href="/download/{{ file.name }}" class="btn">Download</a>
+                            <a href="/delete/{{ file.name }}?page={{ current_page }}" class="btn btn-delete" onclick="return confirm('Bruh có chắc muốn xóa ảnh này?')">Delete</a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="pagination">
+                    {% if pages > 1 %}
+                        {% if current_page > 1 %}
+                            <button onclick="window.location.href='/?page={{ current_page - 1 }}'">←</button>
+                        {% endif %}
+
+                        {% for page in range(1, pages + 1) %}
+                            <button onclick="window.location.href='/?page={{ page }}'" {% if page == current_page %}class="current-page"{% endif %}>{{ page }}</button>
+                        {% endfor %}
+
+                        {% if current_page < pages %}
+                            <button onclick="window.location.href='/?page={{ current_page + 1 }}'">→</button>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            {% else %}
+                <p>No files in this folder.</p>
+            {% endif %}
+        </div>
+    <p>Mn nên xóa bằng Delete trên trang này, không nên xóa trên Drive nên vì đôi lúc Drive không cập nhật sẽ bị lỗi, VD: Folder De_abc có 50 ảnh và bạn chỉ lấy 10 ảnh để Upscale bằng các xóa trên Drive nhưng vì Drive ko update kịp nên sẽ Upscale hết 50 ảnh * 2' = 100' rất tốn thời gian <p>
+    </div>
+</body>
+</html>
+''' 
