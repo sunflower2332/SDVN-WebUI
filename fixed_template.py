@@ -6,14 +6,34 @@ To use it:
 2. Paste it into your Upload_image.ipynb file, replacing the existing HTML_TEMPLATE variable
 3. Add the following routes to your file:
 
-@app.errorhandler(413)
-@app.errorhandler(RequestEntityTooLarge)
-def request_entity_too_large(error):
-    return redirect(url_for('index', error="File too large! Maximum size is 32MB."))
+# At the top of your file, import these modules
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory, jsonify
+from werkzeug.utils import secure_filename
+import os
+import time
+import glob
+import threading
+import subprocess
+from datetime import datetime
+import logging
 
-@app.errorhandler(404)
-def not_found(error):
-    return redirect(url_for('index', error="Page not found."))
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create Flask app with high upload limit
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = DEFAULT_UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # 64MB limit
+app.config['MAX_CONTENT_PATH'] = None  # Disable path limit
+
+# Error handlers to prevent crashes
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Log the error
+    logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
+    # Return to the main page with error message
+    return redirect(url_for('index', error=f"An error occurred: {str(e)}"))
 
 @app.route('/delete_all')
 def delete_all_files():
@@ -30,6 +50,7 @@ def delete_all_files():
         message = f"Deleted {deleted_count} file(s) successfully"
         return redirect(url_for('index', message=message, page=page))
     except Exception as e:
+        logger.error(f"Error deleting files: {str(e)}", exc_info=True)
         error = f"Error deleting files: {str(e)}"
         return redirect(url_for('index', error=error, page=page))
 
@@ -49,8 +70,101 @@ def delete_selected_files():
         message = f"Deleted {deleted_count} file(s) successfully"
         return redirect(url_for('index', message=message, page=page))
     except Exception as e:
+        logger.error(f"Error deleting selected files: {str(e)}", exc_info=True)
         error = f"Error deleting files: {str(e)}"
         return redirect(url_for('index', error=error, page=page))
+
+# Modify your upload route to handle large files gracefully
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    try:
+        if 'file' not in request.files:
+            return redirect(url_for('index', error="No file part"))
+
+        files = request.files.getlist('file')
+
+        if not files or files[0].filename == '':
+            return redirect(url_for('index', error="No files selected"))
+
+        upload_count = 0
+        errors = []
+
+        for file in files:
+            if file and file.filename:
+                try:
+                    # Create timestamped filename
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    filename = secure_filename(file.filename)
+                    base, ext = os.path.splitext(filename)
+                    new_filename = f"{timestamp}_{base}{ext}"
+
+                    # Save the file
+                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], new_filename)
+                    file.save(file_path)
+                    upload_count += 1
+                except Exception as e:
+                    logger.error(f"Error uploading {file.filename}: {str(e)}", exc_info=True)
+                    errors.append(f"Error uploading {file.filename}: {str(e)}")
+
+        if errors:
+            return redirect(url_for('index', error="; ".join(errors)))
+        else:
+            message = f"Successfully uploaded {upload_count} file(s)"
+            return redirect(url_for('index', message=message))
+    except Exception as e:
+        logger.error(f"Upload error: {str(e)}", exc_info=True)
+        return redirect(url_for('index', error=f"Upload error: {str(e)}"))
+
+# Also update your tunnelto_thread function to be more resilient:
+def tunnelto_thread(port, api):
+    import socket
+    
+    # Wait for the Flask app to start
+    retry_count = 0
+    max_retries = 15
+    while retry_count < max_retries:
+        time.sleep(1)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            result = sock.connect_ex(('127.0.0.1', port))
+            if result == 0:
+                break
+        except Exception:
+            pass
+        finally:
+            sock.close()
+        retry_count += 1
+        print(f"Waiting for Flask app to start... {retry_count}/{max_retries}")
+    
+    if retry_count >= max_retries:
+        print("Failed to connect to Flask app. Please check if it's running.")
+        return None
+    
+    # Set the auth key
+    try:
+        cmd = ["/root/.tunnelto/bin/tunnelto", "set-auth", "--key", api[0]]
+        subprocess.run(cmd, timeout=30)
+        
+        # Start the tunnel with increased timeouts
+        cmd_run = ["/root/.tunnelto/bin/tunnelto", "--subdomain", api[1], "--port", f"{port}"]
+        process = subprocess.Popen(cmd_run, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        
+        # Display the tunnel URL
+        print(f"\\033[92m{'🔗 Link online để sử dụng:'}\\033[0m", f"https://{api[1]}.tunn.dev")
+        
+        # Display additional information
+        print("\\n============================================================")
+        print(f"Photo Uploader is running at: https://{api[1]}.tunn.dev")
+        print("This URL can be accessed from any device with internet access")
+        print("Upload folder:", app.config['UPLOAD_FOLDER'])
+        print("Maximum upload size: 64MB")
+        print("============================================================\\n")
+        
+        return process
+    except Exception as e:
+        logger.error(f"Error setting up tunnel: {str(e)}", exc_info=True)
+        print(f"Error setting up tunnel: {str(e)}")
+        return None
 """
 
 HTML_TEMPLATE = '''
@@ -138,6 +252,10 @@ HTML_TEMPLATE = '''
         button:hover, .btn:hover {
             background-color: #3367d6;
         }
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
         .btn-delete {
             background-color: #e53935;
         }
@@ -169,7 +287,7 @@ HTML_TEMPLATE = '''
         .thumbnail-container {
             position: relative;
             width: 100%;
-            height: 250px;
+            height: 300px;
             cursor: pointer;
         }
         .file-thumbnail {
@@ -292,7 +410,7 @@ HTML_TEMPLATE = '''
             <input type="file" name="file" multiple accept="image/*" required>
             <button type="submit">Upload</button>
         </form>
-        <p>Mọi người upload thì giữ Ctrl + Chọn ảnh để có thể chọn được nhiều ảnh cùng 1 lúc, chọn Upload. Kích thước tối đa là 32MB.<p>
+        <p>Mọi người upload thì giữ Ctrl + Chọn ảnh để có thể chọn được nhiều ảnh cùng 1 lúc, chọn Upload. <strong>Có thể tải lên tới 64MB mỗi lần.</strong><p>
     </div>
 
     <div class="container">
@@ -324,8 +442,8 @@ HTML_TEMPLATE = '''
                         </div>
                         <div class="file-info">{{ file.name }} ({{ file.size }})<br>{{ file.date }}</div>
                         <div class="file-actions">
-                            <a href="/download/{{ file.name }}" class="btn">Download</a>
-                            <a href="/delete/{{ file.name }}?page={{ current_page }}" class="btn btn-delete" onclick="return confirm('Bruh có chắc muốn xóa ảnh này?')">Delete</a>
+                            <a href="/download/{{ file.name }}" class="btn btn-small">Download</a>
+                            <a href="/delete/{{ file.name }}?page={{ current_page }}" class="btn btn-delete btn-small" onclick="return confirm('Bruh có chắc muốn xóa ảnh này?')">Delete</a>
                         </div>
                     </div>
                     {% endfor %}
